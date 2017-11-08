@@ -1,0 +1,26 @@
+{
+  "name": "http2-demo",
+  "version": "1.0.0",
+  "description": "Demonstrating the HTTP2 protocol",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pads/http2-demo.git"
+  },
+  "keywords": [
+    "http2"
+  ],
+  "author": "pads",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/pads/http2-demo/issues"
+  },
+  "homepage": "https://github.com/pads/http2-demo#readme",
+  "dependencies": {
+    "mime": "^2.0.3"
+  }
+}
