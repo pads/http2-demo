@@ -1,59 +1,66 @@
-const http2 = require('http2');
+const spdy = require('spdy');
 const fs = require('fs');
 const path = require('path');
-const mime = require('mime');
 
 const PORT = 8443;
-const { HTTP2_HEADER_PATH } = http2.constants;
+
+const JS_BUNDLES = [
+  'main.bundle.js',
+  'vendor.bundle.js'
+]
 
 const config = {
   key: fs.readFileSync(path.join(__dirname, 'ssl', 'localhost-privkey.pem')),
   cert: fs.readFileSync(path.join(__dirname, 'ssl', 'localhost-cert.pem')),
-  allowHTTP1: true
+  protocols: ['h2', 'http/1.1']
 };
 
-const push = (stream, file) => {
-  stream.pushStream({ [HTTP2_HEADER_PATH]: file }, (pushStream) => {
-    pushStream.respondWithFD(file.fileDescriptor, file.headers);
-  })
+const push = (response, file) => {
+  const stream = response.push(file.path, {
+    request: {
+      accept: '*/*'
+    },
+    response: {
+      'content-type': 'application/javascript'
+    }
+  });
+  stream.on('error', (error) => console.log(error));
+  stream.end(file.contents);
 };
 
 const getFile = (filename) => {
   const filePath = path.join(__dirname, 'public', filename);
-  const fileDescriptor = fs.openSync(filePath, 'r');
-  const stat = fs.fstatSync(fileDescriptor);
-  const contentType = mime.getType(filePath);
-
   return {
-    fileDescriptor: fileDescriptor,
-    headers: {
-      'content-length': stat.size,
-      'last-modified': stat.mtime.toUTCString(),
-      'content-type': contentType
-    }
+    name: filename,
+    contents: fs.readFileSync(filePath),
+    path: filePath
   }
 };
 
 const requestHandler = (request, response) => {
-  const headerPath = request.headers[HTTP2_HEADER_PATH];
-  const filename = headerPath === '/' ? 'index.html' : headerPath;
+  const filename = request.url === '/' ? 'index.html' : request.url;
   const file = getFile(filename);
 
-  if (filename === 'index.html') {
-    push(response.stream, getFile('main.bundle.js'));
-    push(response.stream, getFile('vendor.bundle.js'));
-  }
+  if (filename === 'index.html' && response.push) {
+    let output = file.contents;
 
-  response.stream.respondWithFD(file.fileDescriptor, file.headers);
+    JS_BUNDLES.forEach((bundle) => {
+      const bundleFile = getFile(bundle);
+      push(response, bundleFile);
+      output += `<script src="${bundleFile.path}"></script>`;
+    });
+
+    response.end(output);
+  } else {
+    response.writeHead(200);
+    response.end(file.contents);
+  }
 };
 
-const server = http2.createSecureServer(config, requestHandler);
+const server = spdy.createServer(config, requestHandler);
 
 server.on('error', (error) => console.error(error));
 server.on('socketError', (error) => console.error(error));
-server.on('stream', (stream) => {
-  console.log('streaming');
-});
 
 server.listen(PORT, (error) => {
   if (error) {
